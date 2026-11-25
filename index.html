@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreeWay Read Aloud</title>
+<style>
+:root{--navy:#003F83;--orange:#F07D1A;--ink:#1b1f29;--soft:#eef3fa;--line:#d6deea;--good:#1b8a4a;--bad:#c62828}
+*{box-sizing:border-box}body{margin:0;font:17px/1.55 Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);background:#f7f9fc}
+header{background:var(--navy);color:#fff;padding:14px 5vw}header h1{margin:0;font-size:20px}header p{margin:2px 0 0;opacity:.85;font-size:14px}
+main{max-width:760px;margin:0 auto;padding:12px 4vw 60px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+label{font-weight:600;font-size:14px;display:block;margin:8px 0 4px}
+input,select{font:17px Inter,Arial;padding:11px;border:1px solid var(--line);border-radius:10px;width:100%}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+button{font:600 17px Inter,Arial;padding:14px 20px;border-radius:12px;border:0;background:var(--navy);color:#fff;cursor:pointer;min-height:48px}
+button.rec{background:var(--bad)}button.alt{background:#fff;color:var(--navy);border:2px solid var(--navy)}button:disabled{opacity:.45;cursor:default}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
+#text{font-size:19px;line-height:1.95;white-space:pre-wrap}
+.w{padding:1px 2px;border-radius:4px}.w.ok{background:#e3f4ea}.w.mid{background:#fff3cd}.w.bad{background:#fde0e0}.w.om{background:#fde0e0;text-decoration:line-through}.w.nm{background:#eceff3;color:#555}.ins{color:var(--bad);font-style:italic}
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.sc{background:var(--soft);border-radius:12px;padding:12px;text-align:center}.sc b{display:block;font-size:30px;color:var(--navy)}.sc span{font-size:13px}
+.legend span{margin-right:10px;font-size:13px}.status{font-size:15px;color:#444;margin-top:10px}
+.timer{font:700 22px Inter,Arial;color:var(--bad);margin-left:6px;align-self:center}
+.hide{display:none}
+</style></head><body>
+<header><h1>FreeWay Read Aloud</h1><p id="sub">Read the text aloud. Your teacher gets your result automatically.</p></header>
+<main>
+<section class="card" id="who"><div class="row">
+<div><label for="student">Your name</label><input id="student" autocomplete="name" placeholder="Ana López"></div>
+<div><label for="group">Your group</label><input id="group" placeholder="Amayuca B1 · Mon-Wed 4 pm"></div></div></section>
+
+<section class="card"><h2 id="title" style="margin:0 0 8px;color:var(--navy)"></h2><div id="text"></div>
+<div class="legend status"><span class="w ok">good</span><span class="w mid">check</span><span class="w bad">practise</span><span class="w om">skipped</span><span class="w nm">name (not graded)</span></div></section>
+
+<section class="card">
+<div class="btns"><button id="recBtn">● Start reading</button><button id="stopBtn" class="rec hide">■ I finished</button><span class="timer hide" id="timer">0:00</span></div>
+<div class="status" id="status">Find a quiet place. Press "Start reading", read the whole text clearly, then press "I finished".</div></section>
+
+<section class="card hide" id="results"><h2 style="margin-top:0">Your result</h2>
+<div class="scores" id="scores"></div><h3>Words to practise</h3><div id="problems"></div>
+<div class="btns" style="margin-top:14px"><button class="alt" id="again">Try again</button></div></section>
+</main>
+<script src="readings.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.40.0/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+<script>
+{
+// ===== Teacher: paste your Google Apps Script web-app URL here =====
+const API = 'https://script.google.com/macros/s/AKfycbxohVrLs3Hfl-bzx7NQBw_ALsbbycZBlTF1PcsArNyCVVDkhhqweCQYyqIeLN2wlfL2RQ/exec';
+// ====================================================================
+const $=id=>document.getElementById(id);
+const ls={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const id=new URLSearchParams(location.search).get('id');
+const current=READINGS.find(r=>r.id===id)||READINGS[0];
+const norm=w=>w.toLowerCase().replace(/’/g,"'").replace(/[^a-z0-9'ōū-]/g,'');
+const names=new Set((current.names||[]).map(norm));
+const tokens=t=>t.split(/(\s+)/);
+$('title').textContent=current.title; $('sub').textContent=`${current.id} · ${current.level} · Read the text aloud. Your teacher gets your result automatically.`;
+$('student').value=ls.get('fw_student','');$('group').value=ls.get('fw_group','');
+$('student').onchange=()=>ls.set('fw_student',$('student').value.trim());$('group').onchange=()=>ls.set('fw_group',$('group').value.trim());
+function showText(){ $('text').innerHTML=tokens(current.text).map(t=>/\s/.test(t)?t:`<span class="w">${t}</span>`).join(''); }
+showText();
+const status=m=>$('status').textContent=m;
+let rec,chunks=[],t0,tick;
+$('recBtn').onclick=async()=>{
+  if(!$('student').value.trim()||!$('group').value.trim()){status('Write your name and your group first.');$('student').focus();return}
+  ls.set('fw_student',$('student').value.trim());ls.set('fw_group',$('group').value.trim());
+  try{const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});chunks=[];rec=new MediaRecorder(s);
+    rec.ondataavailable=e=>chunks.push(e.data);
+    rec.onstop=()=>{s.getTracks().forEach(t=>t.stop());assess(new Blob(chunks,{type:rec.mimeType}))};
+    rec.start();t0=Date.now();tick=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);$('timer').textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},500);
+    $('recBtn').classList.add('hide');$('stopBtn').classList.remove('hide');$('timer').classList.remove('hide');$('results').classList.add('hide');showText();
+    status('Recording… read the whole text. Press "I finished" at the end.');
+  }catch(e){status('We cannot use your microphone. Allow the microphone in your browser and try again.')}
+};
+$('stopBtn').onclick=()=>{clearInterval(tick);if(rec&&rec.state!=='inactive')rec.stop();$('stopBtn').classList.add('hide');$('timer').classList.add('hide')};
+$('again').onclick=()=>{$('results').classList.add('hide');showText();$('recBtn').classList.remove('hide');status('Ready. Press "Start reading" when you are ready.');scrollTo({top:0,behavior:'smooth'})};
+
+async function toPCM16k(blob){
+  const buf=await blob.arrayBuffer();const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const dec=await ctx.decodeAudioData(buf);const len=Math.ceil(dec.duration*16000);
+  const off=new OfflineAudioContext(1,len,16000);const src=off.createBufferSource();src.buffer=dec;src.connect(off.destination);src.start();
+  const r=await off.startRendering();const f=r.getChannelData(0);const pcm=new Int16Array(f.length);
+  for(let i=0;i<f.length;i++){const v=Math.max(-1,Math.min(1,f[i]));pcm[i]=v<0?v*0x8000:v*0x7FFF}
+  return {pcm,duration:dec.duration};
+}
+async function assess(blob){
+  status('Checking your reading… please wait.');
+  let tok;try{tok=await fetch(API+'?action=token').then(r=>r.json());if(!tok.token)throw 0}catch(e){status('The checker is not available right now. Try again later or tell your teacher.');$('recBtn').classList.remove('hide');return}
+  let pcm,duration;try{({pcm,duration}=await toPCM16k(blob))}catch(e){status('We could not read the recording. Please try again.');$('recBtn').classList.remove('hide');return}
+  const fmt=SpeechSDK.AudioStreamFormat.getWaveFormatPCM(16000,16,1);const push=SpeechSDK.AudioInputStream.createPushStream(fmt);push.write(pcm.buffer);push.close();
+  const cfg=SpeechSDK.SpeechConfig.fromAuthorizationToken(tok.token,tok.region);cfg.speechRecognitionLanguage='en-US';
+  const rcg=new SpeechSDK.SpeechRecognizer(cfg,SpeechSDK.AudioConfig.fromStreamInput(push));
+  const pa=new SpeechSDK.PronunciationAssessmentConfig(current.text.replace(/\n+/g,' '),SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,SpeechSDK.PronunciationAssessmentGranularity.Phoneme,true);
+  pa.enableProsodyAssessment=true;pa.applyTo(rcg);
+  const segs=[];
+  rcg.recognized=(s,e)=>{if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech){try{segs.push(JSON.parse(e.result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult)))}catch(x){}}};
+  let finished=false;const done=()=>{if(finished)return;finished=true;rcg.stopContinuousRecognitionAsync(()=>{rcg.close();show(segs,duration)},()=>show(segs,duration))};
+  rcg.sessionStopped=done;rcg.canceled=(s,e)=>{if(e.reason===SpeechSDK.CancellationReason.Error){status('Something went wrong. Please try again.');$('recBtn').classList.remove('hide')}else done()};
+  rcg.startContinuousRecognitionAsync();
+}
+function show(segs,duration){
+  $('recBtn').classList.remove('hide');$('recBtn').textContent='● Read again';
+  const words=[];const flu=[],pro=[];
+  segs.forEach(j=>{const b=j.NBest&&j.NBest[0];if(!b)return;const p=b.PronunciationAssessment||{};
+    if(p.FluencyScore!=null)flu.push([p.FluencyScore,j.Duration||1]);if(p.ProsodyScore!=null)pro.push([p.ProsodyScore,j.Duration||1]);
+    (b.Words||[]).forEach(w=>words.push({w:w.Word,acc:w.PronunciationAssessment?.AccuracyScore??0,err:w.PronunciationAssessment?.ErrorType||'None'}))});
+  if(!words.length){status('We did not hear your voice. Check your microphone and try again.');return}
+  const ref=tokens(current.text).filter(t=>!/\s/.test(t));const spans=[...$('text').querySelectorAll('.w')];
+  let k=0;
+  words.forEach(w=>{ if(w.err==='Insertion')return; while(k<ref.length&&!norm(ref[k]))k++;
+    if(k<ref.length){const isName=names.has(norm(ref[k]));w.name=isName;
+      spans[k].className='w '+(isName?'nm':w.err==='Omission'?'om':(w.err==='Mispronunciation'||w.acc<60)?'bad':w.acc<80?'mid':'ok');k++}});
+  const graded=words.filter(w=>!w.name&&w.err!=='Insertion');
+  const spoken=graded.filter(w=>w.err!=='Omission');
+  const acc=spoken.length?spoken.reduce((a,w)=>a+w.acc,0)/spoken.length:0;
+  const wavg=a=>{const t=a.reduce((s,x)=>s+x[1],0);return t?a.reduce((s,x)=>s+x[0]*x[1],0)/t:0};
+  const refCount=ref.filter(t=>norm(t)).length;const omit=words.filter(w=>w.err==='Omission').length;
+  const comp=Math.max(0,Math.min(100,100*(refCount-omit)/refCount));
+  const wcpm=Math.round(spoken.filter(w=>w.err==='None'&&w.acc>=60).length/(duration/60));
+  const f=wavg(flu),p=wavg(pro);
+  const total=Math.round(acc*0.4+f*0.2+p*0.2+comp*0.2);
+  $('scores').innerHTML=[['Total',total],['Pronunciation',acc],['Fluency',f],['Intonation',p],['Completeness',comp]].map(([n,v])=>`<div class="sc"><b>${Math.round(v)}</b><span>${n} /100</span></div>`).join('')+`<div class="sc"><b>${wcpm}</b><span>words per minute</span></div>`;
+  const prob={};graded.filter(w=>w.err==='Mispronunciation'||(w.err==='None'&&w.acc<60)).forEach(w=>{const x=norm(w.w);if(x)prob[x]=(prob[x]||0)+1});
+  const list=Object.keys(prob);
+  $('problems').innerHTML=list.length?list.map(w=>`<span class="w bad" style="display:inline-block;margin:3px">${w}</span>`).join(''):'<p>Excellent — no words to practise!</p>';
+  $('results').classList.remove('hide');$('results').scrollIntoView({behavior:'smooth'});
+  status('Sending your result to your teacher…');
+  const payload={student:ls.get('fw_student',''),group:ls.get('fw_group',''),reading:current.id,title:current.title,total,accuracy:Math.round(acc),fluency:Math.round(f),prosody:Math.round(p),completeness:Math.round(comp),wpm:wcpm,seconds:Math.round(duration),problems:list.join(' ')};
+  fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
+    .then(r=>r.json()).then(j=>status(j.ok?'Done! Your teacher has your result.':'Your result could not be sent. Tell your teacher.'))
+    .catch(()=>status('Your result could not be sent. Check your internet and press "Read again".'));
+}
+}
+</script></body></html>
