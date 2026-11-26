@@ -19,15 +19,29 @@ button.rec{background:var(--bad)}button.alt{background:#fff;color:var(--navy);bo
 .sc{background:var(--soft);border-radius:12px;padding:12px;text-align:center}.sc b{display:block;font-size:30px;color:var(--navy)}.sc span{font-size:13px}
 .legend span{margin-right:10px;font-size:13px}.status{font-size:15px;color:#444;margin-top:10px}
 .timer{font:700 22px Inter,Arial;color:var(--bad);margin-left:6px;align-self:center}
+
+.tabs{display:flex;gap:6px;margin:12px 0 0;position:sticky;top:0;z-index:6;background:#f7f9fc;padding:6px 0}
+.tab{flex:1;background:#fff;color:var(--navy);border:2px solid var(--navy);padding:10px 6px;font-size:15px}
+.tab.on{background:var(--navy);color:#fff}
+#p-read .sticky{top:62px}
+.q{margin:14px 0}.q p{margin:0 0 6px}.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{background:#fff;color:var(--ink);border:1.5px solid var(--line);padding:10px 14px;font-weight:500;min-height:44px;text-align:left}
+.opt.sel{border-color:var(--navy);background:#e8eef7}.opt.right{background:#e3f4ea;border-color:var(--good)}.opt.wrong{background:#fde0e0;border-color:var(--bad)}
+.fb{font-size:14px;margin-top:6px}.fb.ok{color:var(--good)}.fb.no{color:var(--bad)}
+input.gap{width:auto;min-width:150px;padding:8px;display:inline-block}
+textarea{width:100%;min-height:260px;font:17px/1.6 Inter,Arial;padding:12px;border:1px solid var(--line);border-radius:10px}
+.big{font-size:34px;font-weight:700;color:var(--navy)}
 .hide{display:none}
 .sticky{position:sticky;top:0;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.08)}
 </style></head><body>
 <header><h1>FreeWay Read Aloud</h1><p id="sub">Read the text aloud. Your teacher gets your result automatically.</p></header>
 <main>
+<nav class="tabs"><button class="tab on" data-t="read">🎙 Read aloud</button><button class="tab" data-t="ex">✅ Exercises</button><button class="tab" data-t="wr">✍ Writing</button></nav>
 <section class="card" id="who"><div class="row">
 <div><label for="student">Your name</label><input id="student" autocomplete="name" placeholder="Ana López"></div>
 <div><label for="group">Your group</label><input id="group" placeholder="Amayuca B1 · Mon-Wed 4 pm"></div></div></section>
 
+<div id="p-read">
 <section class="card sticky" id="controls">
 <div class="btns"><button id="recBtn">● Start reading</button><button id="stopBtn" class="rec hide">■ I finished</button><span class="timer hide" id="timer">0:00</span></div>
 <div class="status" id="status">Find a quiet place. Press "Start reading", read the whole text clearly, then press "I finished".</div></section>
@@ -40,6 +54,9 @@ button.rec{background:var(--bad)}button.alt{background:#fff;color:var(--navy);bo
 <section class="card hide" id="results"><h2 style="margin-top:0">Your result</h2>
 <div class="scores" id="scores"></div><h3>Words to practise</h3><div id="problems"></div>
 <div class="btns" style="margin-top:14px"><button class="alt" id="again">Try again</button></div></section>
+</div>
+<div id="p-ex" class="hide"><div id="exBox"></div></div>
+<div id="p-wr" class="hide"><div id="wrBox"></div></div>
 </main>
 <script src="readings.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.40.0/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
@@ -132,5 +149,63 @@ function show(segs,duration){
     .then(r=>r.json()).then(j=>status(j.ok?'Done! Your teacher has your result.':'Your result could not be sent. Tell your teacher.'))
     .catch(()=>status('Your result could not be sent. Check your internet and press "Read again".'));
 }
+// ===== Tabs =====
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
+  ['read','ex','wr'].forEach(t=>$('p-'+t).classList.toggle('hide',t!==b.dataset.t));scrollTo({top:0})});
+const who=()=>{const s=$('student').value.trim(),g=$('group').value.trim();if(!s||!g){alert('Write your name and your group first.');$('student').focus();return null}ls.set('fw_student',s);ls.set('fw_group',g);return {s,g}};
+const post=p=>fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>({ok:false}));
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+const openAI=txt=>{const u='https://chatgpt.com/?q='+encodeURIComponent(txt);window.open(u,'_blank')};
+
+// ===== Exercises =====
+const E=current.ex; const ans={};
+function exHTML(){
+  if(!E){$('exBox').innerHTML='<div class="card">No exercises for this reading yet.</div>';return}
+  let h='';const btns=(k,opts,labels)=>`<div class="opts">${opts.map((o,i)=>`<button class="opt" data-k="${k}" data-v="${o}">${esc(labels?labels[i]:o)}</button>`).join('')}</div><div class="fb" id="fb-${k}"></div>`;
+  h+='<section class="card"><h2>A. True, False or Not Given</h2>'+E.tf.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('A'+(i+1),['T','F','NG'],['True','False','Not given'])}</div>`).join('')+'</section>';
+  h+='<section class="card"><h2>B. Understanding the story</h2>'+E.mc.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('B'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
+  h+='<section class="card"><h2>C. Words with different meanings</h2>'+E.toefl.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('C'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
+  let n=0;const sum=esc(E.summary.text).replace(/\((\d)\)\s*_+/g,(m,d)=>`(${d}) <input class="gap" data-k="D${d}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><span class="fb" id="fb-D${d}"></span>`);
+  h+=`<section class="card"><h2>D. Complete the summary</h2><p>Use words from the Key vocabulary.</p><p style="line-height:2.4">${sum}</p></section>`;
+  h+=`<section class="card"><h2>G. Grammar: ${esc(E.gtitle)}</h2>`+E.grammar.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q).replace(/_{3,}/,`<input class="gap" data-k="G${i+1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`)} <span class="fb" id="fb-G${i+1}"></span></p></div>`).join('')+'</section>';
+  h+='<section class="card"><div class="btns"><button id="checkEx">Check my answers</button></div><div id="exRes"></div></section>';
+  $('exBox').innerHTML=h;
+  $('exBox').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(b.disabled)return;ans[b.dataset.k]=b.dataset.v;$('exBox').querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle('sel',x===b))});
+  $('checkEx').onclick=checkEx;
+}
+const clean=t=>String(t||'').toLowerCase().replace(/[’']/g,"'").replace(/[^a-z' ]/g,' ').replace(/\s+/g,' ').trim();
+async function checkEx(){
+  const w=who();if(!w)return;
+  $('exBox').querySelectorAll('input.gap').forEach(i=>ans[i.dataset.k]=i.value);
+  const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
+  E.summary.keys.forEach((k,i)=>keys.push(['D'+(i+1),k]));E.grammar.forEach((x,i)=>keys.push(['G'+(i+1),x.a,'paragraph '+x.p]));
+  const missing=keys.filter(([k])=>!String(ans[k]||'').trim()).length;
+  if(missing&&!confirm(`You have ${missing} empty answers. Check anyway?`))return;
+  let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};
+  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G')?clean(mine)===clean(right):mine===right;
+    per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
+    const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?' ✓':` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
+    $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
+  const total=keys.length;const pct=Math.round(100*ok/total);
+  $('exRes').innerHTML=`<p class="big">${ok}/${total}</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
+    (mistakes.length?`<div class="btns"><button id="explainAI">🤖 Explain my mistakes (mini-lesson)</button><button class="alt" id="retryEx">Try again</button></div>`:'<p>Perfect! 🎉</p>')+'<p class="status" id="exStatus">Sending your result to your teacher…</p>';
+  if(mistakes.length){$('explainAI').onclick=()=>openAI(`You are my English teacher. I am a ${current.level} student at FreeWay (Mexico). I did the exercises for the reading "${current.title}". These are my mistakes:\n${mistakes.map(m=>`${m.k}: I wrote "${m.mine}", correct: "${m.right}"`).join('\n')}\nFor each mistake, explain briefly in simple English why the correct answer is right. Then group my mistakes by pattern and give me a MINI-LESSON for each pattern: the rule in simple words, 2 examples and 2 practice items. Wait for my answers and check them. Be kind and direct.\n\nTHE READING:\n${current.text}`);
+    $('retryEx').onclick=()=>{for(const k in ans)delete ans[k];exHTML();scrollTo({top:0})}}
+  const r=await post({kind:'exercises',student:w.s,group:w.g,reading:current.id,title:current.title,score:ok,total,pct,detail:Object.entries(per).map(([s,[a,b]])=>`${s} ${a}/${b}`).join(' · '),mistakes:mistakes.map(m=>m.k).join(' ')});
+  $('exStatus').textContent=r.ok?'Done! Your teacher has your result.':'Your result could not be sent. Check your internet.';
+}
+exHTML();
+
+// ===== Writing =====
+const W=current.writing;
+if(W){$('wrBox').innerHTML=`<section class="card"><h2>F. Writing: ${esc(W.title)}</h2><p>${esc(W.task)}</p><p><i>Useful language:</i> ${esc(W.useful)}</p>
+<textarea id="wtext" placeholder="Write here…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+<p class="status"><span id="wcount">0</span> words</p><div class="btns"><button id="wAI">🤖 Check my writing with AI</button></div><p class="status" id="wStatus">When you press the button, ChatGPT opens with your text ready. Just press send.</p></section>`;
+  const t=$('wtext');t.value=ls.get('fw_w_'+current.id,'');const cnt=()=>{$('wcount').textContent=(t.value.trim().match(/\S+/g)||[]).length;ls.set('fw_w_'+current.id,t.value)};t.oninput=cnt;cnt();
+  $('wAI').onclick=async()=>{const w=who();if(!w)return;const words=(t.value.trim().match(/\S+/g)||[]).length;if(words<20){alert('Write your text first.');return}
+    openAI(`You are my English teacher. I am a ${current.level} student at FreeWay (Mexico). This is my writing for the reading "${current.title}".\nTASK: ${W.task}\nMY TEXT:\n${t.value}\n\n1) Give me a score out of 10 (content, organization, grammar, vocabulary). 2) Correct my errors and explain each one briefly in simple English. 3) Give me one MINI-LESSON on my most important error pattern, with 2 practice items, and check my answers. 4) Show me an improved version of my text. 5) At the end, write a short TEACHER REPORT: Student ${w.s} · Group ${w.g} · ${current.id} · Writing score · Main error patterns · One recommendation.`);
+    const r=await post({kind:'writing',student:w.s,group:w.g,reading:current.id,title:current.title,words,text:t.value});
+    $('wStatus').textContent=r.ok?'Your text was also sent to your teacher.':'ChatGPT opened, but your text could not be sent to your teacher.'};
+}else $('wrBox').innerHTML='<div class="card">No writing task for this reading yet.</div>';
 }
 </script></body></html>
