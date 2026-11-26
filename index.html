@@ -112,8 +112,8 @@ function show(segs,duration){
   const spoken=graded.filter(w=>w.err!=='Omission');
   const acc=spoken.length?spoken.reduce((a,w)=>a+w.acc,0)/spoken.length:0;
   const wavg=a=>{const t=a.reduce((s,x)=>s+x[1],0);return t?a.reduce((s,x)=>s+x[0]*x[1],0)/t:0};
-  const refCount=ref.filter(t=>norm(t)).length;const omit=words.filter(w=>w.err==='Omission').length;
-  const comp=Math.max(0,Math.min(100,100*(refCount-omit)/refCount));
+  const refCount=ref.filter(t=>norm(t)).length;const readCount=words.filter(w=>w.err!=='Omission'&&w.err!=='Insertion').length;
+  const comp=Math.max(0,Math.min(100,100*readCount/refCount));
   const wcpm=Math.round(spoken.filter(w=>w.err==='None'&&w.acc>=60).length/(duration/60));
   const f=wavg(flu),p=wavg(pro);
   const total=Math.round(acc*0.4+f*0.2+p*0.2+comp*0.2);
