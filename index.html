@@ -168,23 +168,27 @@ function exHTML(){
   let n=0;const sum=esc(E.summary.text).replace(/\((\d)\)\s*_+/g,(m,d)=>`(${d}) <input class="gap" data-k="D${d}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><span class="fb" id="fb-D${d}"></span>`);
   h+=`<section class="card"><h2>D. Complete the summary</h2><p>Use words from the Key vocabulary.</p><p style="line-height:2.4">${sum}</p></section>`;
   h+=`<section class="card"><h2>G. Grammar: ${esc(E.gtitle)}</h2>`+E.grammar.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q).replace(/_{3,}/,`<input class="gap" data-k="G${i+1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`)} <span class="fb" id="fb-G${i+1}"></span></p></div>`).join('')+'</section>';
+  if(E.fix)h+=`<section class="card"><h2>I. Fix the sentence</h2><p>Each sentence has <b>one</b> mistake: spelling, grammar, word order or a false fact. Correct the sentence in the box.</p>`+E.fix.map((x,i)=>`<div class="q"><p>${i+1}. <span style="color:#555">${esc(x.w)}</span></p><input class="gap fix" style="width:100%" data-k="I${i+1}" value="${esc(x.w)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="fb" id="fb-I${i+1}"></div></div>`).join('')+'</section>';
   h+='<section class="card"><div class="btns"><button id="checkEx">Check my answers</button></div><div id="exRes"></div></section>';
   $('exBox').innerHTML=h;
   $('exBox').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(b.disabled)return;ans[b.dataset.k]=b.dataset.v;$('exBox').querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle('sel',x===b))});
   $('checkEx').onclick=checkEx;
 }
-const clean=t=>String(t||'').toLowerCase().replace(/[’']/g,"'").replace(/[^a-z' ]/g,' ').replace(/\s+/g,' ').trim();
+const clean=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,"'").replace(/[^a-z0-9' -]/g,' ').replace(/\s+/g,' ').trim();
 async function checkEx(){
   const w=who();if(!w)return;
   $('exBox').querySelectorAll('input.gap').forEach(i=>ans[i.dataset.k]=i.value);
   const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
   E.summary.keys.forEach((k,i)=>keys.push(['D'+(i+1),k]));E.grammar.forEach((x,i)=>keys.push(['G'+(i+1),x.a,'paragraph '+x.p]));
+  (E.fix||[]).forEach((x,i)=>keys.push(['I'+(i+1),x.a,x.t]));
   const missing=keys.filter(([k])=>!String(ans[k]||'').trim()).length;
+  const unchanged=(E.fix||[]).filter((x,i)=>clean(ans['I'+(i+1)])===clean(x.w)).length;
+  if(unchanged&&!confirm(`You did not change ${unchanged} sentence(s) in exercise I. Check anyway?`))return;
   if(missing&&!confirm(`You have ${missing} empty answers. Check anyway?`))return;
-  let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};
-  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G')?clean(mine)===clean(right):mine===right;
+  let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};if(E.fix)per.I=[0,0];
+  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G'||k[0]==='I')?clean(mine)===clean(right):mine===right;
     per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
-    const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?' ✓':` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
+    const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='I'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
     $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
   const total=keys.length;const pct=Math.round(100*ok/total);
   $('exRes').innerHTML=`<p class="big">${ok}/${total}</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
