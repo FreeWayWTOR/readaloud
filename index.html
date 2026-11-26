@@ -20,6 +20,7 @@ button.rec{background:var(--bad)}button.alt{background:#fff;color:var(--navy);bo
 .legend span{margin-right:10px;font-size:13px}.status{font-size:15px;color:#444;margin-top:10px}
 .timer{font:700 22px Inter,Arial;color:var(--bad);margin-left:6px;align-self:center}
 .hide{display:none}
+.sticky{position:sticky;top:0;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.08)}
 </style></head><body>
 <header><h1>FreeWay Read Aloud</h1><p id="sub">Read the text aloud. Your teacher gets your result automatically.</p></header>
 <main>
@@ -27,12 +28,14 @@ button.rec{background:var(--bad)}button.alt{background:#fff;color:var(--navy);bo
 <div><label for="student">Your name</label><input id="student" autocomplete="name" placeholder="Ana López"></div>
 <div><label for="group">Your group</label><input id="group" placeholder="Amayuca B1 · Mon-Wed 4 pm"></div></div></section>
 
+<section class="card sticky" id="controls">
+<div class="btns"><button id="recBtn">● Start reading</button><button id="stopBtn" class="rec hide">■ I finished</button><span class="timer hide" id="timer">0:00</span></div>
+<div class="status" id="status">Find a quiet place. Press "Start reading", read the whole text clearly, then press "I finished".</div></section>
+
 <section class="card"><h2 id="title" style="margin:0 0 8px;color:var(--navy)"></h2><div id="text"></div>
 <div class="legend status"><span class="w ok">good</span><span class="w mid">check</span><span class="w bad">practise</span><span class="w om">skipped</span><span class="w nm">name (not graded)</span></div></section>
 
-<section class="card">
-<div class="btns"><button id="recBtn">● Start reading</button><button id="stopBtn" class="rec hide">■ I finished</button><span class="timer hide" id="timer">0:00</span></div>
-<div class="status" id="status">Find a quiet place. Press "Start reading", read the whole text clearly, then press "I finished".</div></section>
+
 
 <section class="card hide" id="results"><h2 style="margin-top:0">Your result</h2>
 <div class="scores" id="scores"></div><h3>Words to practise</h3><div id="problems"></div>
