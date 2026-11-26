@@ -106,8 +106,9 @@ function show(segs,duration){
   const ref=tokens(current.text).filter(t=>!/\s/.test(t));const spans=[...$('text').querySelectorAll('.w')];
   let k=0;
   words.forEach(w=>{ if(w.err==='Insertion')return; while(k<ref.length&&!norm(ref[k]))k++;
-    if(k<ref.length){const isName=names.has(norm(ref[k]));w.name=isName;
+    if(k<ref.length){const isName=names.has(norm(ref[k]))||names.has(norm(w.w));w.name=isName;
       spans[k].className='w '+(isName?'nm':w.err==='Omission'?'om':(w.err==='Mispronunciation'||w.acc<60)?'bad':w.acc<80?'mid':'ok');k++}});
+  words.forEach(w=>{if(names.has(norm(w.w)))w.name=true});
   const graded=words.filter(w=>!w.name&&w.err!=='Insertion');
   const spoken=graded.filter(w=>w.err!=='Omission');
   const acc=spoken.length?spoken.reduce((a,w)=>a+w.acc,0)/spoken.length:0;
