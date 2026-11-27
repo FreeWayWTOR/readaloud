@@ -166,9 +166,9 @@ function exHTML(){
   h+='<section class="card"><h2>B. Understanding the story</h2>'+E.mc.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('B'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
   h+='<section class="card"><h2>C. Words with different meanings</h2>'+E.toefl.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('C'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
   let n=0;const sum=esc(E.summary.text).replace(/\((\d)\)\s*_+/g,(m,d)=>`(${d}) <input class="gap" data-k="D${d}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><span class="fb" id="fb-D${d}"></span>`);
-  h+=`<section class="card"><h2>D. Complete the summary</h2><p>Use words from the Key vocabulary.</p><p style="line-height:2.4">${sum}</p></section>`;
+  h+=`<section class="card"><h2>D. Complete the summary</h2><p>All the missing words are in the Key vocabulary.</p><p style="line-height:2.4;font-style:italic">${sum}</p></section>`;
   h+=`<section class="card"><h2>G. Grammar: ${esc(E.gtitle)}</h2>`+E.grammar.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q).replace(/_{3,}/,`<input class="gap" data-k="G${i+1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`)} <span class="fb" id="fb-G${i+1}"></span></p></div>`).join('')+'</section>';
-  if(E.fix)h+=`<section class="card"><h2>I. Fix the sentence</h2><p>Each sentence has <b>one</b> mistake: spelling, grammar, word order or a false fact. Correct the sentence in the box.</p>`+E.fix.map((x,i)=>`<div class="q"><p>${i+1}. <span style="color:#555">${esc(x.w)}</span></p><input class="gap fix" style="width:100%" data-k="I${i+1}" value="${esc(x.w)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="fb" id="fb-I${i+1}"></div></div>`).join('')+'</section>';
+  if(E.fix)h+=`<section class="card"><h2>H. Fix the sentence</h2><p>The <u>underlined</u> part of each sentence has <b>one</b> mistake: spelling, grammar, word order or a false fact. Correct the sentence in the box.</p>`+E.fix.map((x,i)=>`<div class="q"><p>${i+1}. <span style="color:#555">${x.u?esc(x.u[0])+' <u>'+esc(x.u[1])+'</u> '+esc(x.u[2]):esc(x.w)}</span></p><input class="gap fix" style="width:100%" data-k="H${i+1}" value="${esc(x.w)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="fb" id="fb-H${i+1}"></div></div>`).join('')+'</section>';
   h+='<section class="card"><div class="btns"><button id="checkEx">Check my answers</button></div><div id="exRes"></div></section>';
   $('exBox').innerHTML=h;
   $('exBox').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(b.disabled)return;ans[b.dataset.k]=b.dataset.v;$('exBox').querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle('sel',x===b))});
@@ -180,15 +180,15 @@ async function checkEx(){
   $('exBox').querySelectorAll('input.gap').forEach(i=>ans[i.dataset.k]=i.value);
   const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
   E.summary.keys.forEach((k,i)=>keys.push(['D'+(i+1),k]));E.grammar.forEach((x,i)=>keys.push(['G'+(i+1),x.a,'paragraph '+x.p]));
-  (E.fix||[]).forEach((x,i)=>keys.push(['I'+(i+1),x.a,x.t]));
+  (E.fix||[]).forEach((x,i)=>keys.push(['H'+(i+1),x.a,x.t]));
   const missing=keys.filter(([k])=>!String(ans[k]||'').trim()).length;
-  const unchanged=(E.fix||[]).filter((x,i)=>clean(ans['I'+(i+1)])===clean(x.w)).length;
-  if(unchanged&&!confirm(`You did not change ${unchanged} sentence(s) in exercise I. Check anyway?`))return;
+  const unchanged=(E.fix||[]).filter((x,i)=>clean(ans['H'+(i+1)])===clean(x.w)).length;
+  if(unchanged&&!confirm(`You did not change ${unchanged} sentence(s) in exercise H. Check anyway?`))return;
   if(missing&&!confirm(`You have ${missing} empty answers. Check anyway?`))return;
-  let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};if(E.fix)per.I=[0,0];
-  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G'||k[0]==='I')?clean(mine)===clean(right):mine===right;
+  let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};if(E.fix)per.H=[0,0];
+  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G'||k[0]==='H')?clean(mine)===clean(right):mine===right;
     per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
-    const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='I'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
+    const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='H'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
     $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
   const total=keys.length;const pct=Math.round(100*ok/total);
   $('exRes').innerHTML=`<p class="big">${ok}/${total}</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
@@ -202,7 +202,7 @@ exHTML();
 
 // ===== Writing =====
 const W=current.writing;
-if(W){$('wrBox').innerHTML=`<section class="card"><h2>F. Writing: ${esc(W.title)}</h2><p>${esc(W.task)}</p><p><i>Useful language:</i> ${esc(W.useful)}</p>
+if(W){$('wrBox').innerHTML=`<section class="card"><h2>F. Writing: ${esc(W.title)}</h2><p>${esc(W.task)}</p><p><b>Useful language · use at least 10 of these:</b><br>${esc(W.useful)}</p>
 <textarea id="wtext" placeholder="Write here…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
 <p class="status"><span id="wcount">0</span> words</p><div class="btns"><button id="wAI">🤖 Check my writing with AI</button></div><p class="status" id="wStatus">When you press the button, ChatGPT opens with your text ready. Just press send.</p></section>`;
   const t=$('wtext');t.value=ls.get('fw_w_'+current.id,'');const cnt=()=>{$('wcount').textContent=(t.value.trim().match(/\S+/g)||[]).length;ls.set('fw_w_'+current.id,t.value)};t.oninput=cnt;cnt();
