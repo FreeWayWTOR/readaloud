@@ -164,10 +164,11 @@ function exHTML(){
   let h='';const btns=(k,opts,labels)=>`<div class="opts">${opts.map((o,i)=>`<button class="opt" data-k="${k}" data-v="${o}">${esc(labels?labels[i]:o)}</button>`).join('')}</div><div class="fb" id="fb-${k}"></div>`;
   h+='<section class="card"><h2>A. True, False or Not Given</h2>'+E.tf.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('A'+(i+1),['T','F','NG'],['True','False','Not given'])}</div>`).join('')+'</section>';
   h+='<section class="card"><h2>B. Understanding the story</h2>'+E.mc.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('B'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
-  h+='<section class="card"><h2>C. Words with different meanings</h2>'+E.toefl.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('C'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
+  h+='<section class="card"><h2>C. Words in context</h2>'+E.toefl.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('C'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
   let n=0;const sum=esc(E.summary.text).replace(/\((\d)\)\s*_+/g,(m,d)=>`(${d}) <input class="gap" data-k="D${d}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><span class="fb" id="fb-D${d}"></span>`);
   h+=`<section class="card"><h2>D. Complete the summary</h2><p>All the missing words are in the Key vocabulary.</p><p style="line-height:2.4;font-style:italic">${sum}</p></section>`;
   h+=`<section class="card"><h2>G. Grammar: ${esc(E.gtitle)}</h2>`+E.grammar.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q).replace(/_{3,}/,`<input class="gap" data-k="G${i+1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`)} <span class="fb" id="fb-G${i+1}"></span></p></div>`).join('')+'</section>';
+  if(E.hunt){const H=E.hunt;h+=`<section class="card"><h2>G · Part 3. Word hunt</h2><p>Read <b>paragraphs ${H.range[0]} to ${H.range[1]}</b> again and find the words. Write them in the boxes, separated by commas. Write a word every time it appears.</p>`+H.targets.map((t,k)=>`<h3 style="margin:14px 0 6px">${'AB'[k]}. ${esc(t.name)}${t.note?` <small style="color:#666">(${esc(t.note.replace(/\*/g,''))})</small>`:''}</h3>`+Object.entries(t.items).map(([p,ws])=>`<div class="q"><p>Paragraph ${p} · <b>${ws.length}</b> ${ws.length===1?'word':'words'}</p>${ws.length?`<input class="gap hunt" style="width:100%" data-h="${k}-${p}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="word, word, word">`:'<p class="status">Nothing here: this paragraph has none.</p>'}<div class="fb" id="fb-W${k}-${p}"></div></div>`).join('')).join('')+'</section>'}
   if(E.fix)h+=`<section class="card"><h2>H. Fix the sentence</h2><p>The <u>underlined</u> part of each sentence has <b>one</b> mistake: spelling, grammar, word order or a false fact. Correct the sentence in the box.</p>`+E.fix.map((x,i)=>`<div class="q"><p>${i+1}. <span style="color:#555">${x.u?esc(x.u[0])+' <u>'+esc(x.u[1])+'</u> '+esc(x.u[2]):esc(x.w)}</span></p><input class="gap fix" style="width:100%" data-k="H${i+1}" value="${esc(x.w)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><div class="fb" id="fb-H${i+1}"></div></div>`).join('')+'</section>';
   h+='<section class="card"><div class="btns"><button id="checkEx">Check my answers</button></div><div id="exRes"></div></section>';
   $('exBox').innerHTML=h;
@@ -177,7 +178,7 @@ function exHTML(){
 const clean=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,"'").replace(/[^a-z0-9' -]/g,' ').replace(/\s+/g,' ').trim();
 async function checkEx(){
   const w=who();if(!w)return;
-  $('exBox').querySelectorAll('input.gap').forEach(i=>ans[i.dataset.k]=i.value);
+  $('exBox').querySelectorAll('input.gap:not(.hunt)').forEach(i=>ans[i.dataset.k]=i.value);
   const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
   E.summary.keys.forEach((k,i)=>keys.push(['D'+(i+1),k]));E.grammar.forEach((x,i)=>keys.push(['G'+(i+1),x.a,'paragraph '+x.p]));
   (E.fix||[]).forEach((x,i)=>keys.push(['H'+(i+1),x.a,x.t]));
@@ -186,11 +187,15 @@ async function checkEx(){
   if(unchanged&&!confirm(`You did not change ${unchanged} sentence(s) in exercise H. Check anyway?`))return;
   if(missing&&!confirm(`You have ${missing} empty answers. Check anyway?`))return;
   let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};if(E.fix)per.H=[0,0];
+  let hOk=0,hTot=0;if(E.hunt){per.W=[0,0];E.hunt.targets.forEach((t,k)=>Object.entries(t.items).forEach(([p,ws])=>{if(!ws.length)return;const inp=$('exBox').querySelector(`input.hunt[data-h="${k}-${p}"]`);const mine=String(inp?inp.value:'').split(/[,;\n]+|\s+/).map(clean).filter(Boolean);const pool=[...mine];const miss=[];
+    ws.forEach(w=>{const i=pool.indexOf(clean(w));if(i>=0){pool.splice(i,1);hOk++}else miss.push(w)});hTot+=ws.length;const got=ws.length-miss.length;
+    const fb=$(`fb-W${k}-${p}`);if(fb){fb.className='fb '+(miss.length?'no':'ok');fb.textContent=miss.length?` ${got}/${ws.length} · Missing: ${miss.join(', ')}${pool.length?' · Not correct: '+pool.join(', '):''}`:` ✓ ${got}/${ws.length}`}
+    if(miss.length)mistakes.push({k:`W${'AB'[k]}¶${p}`,mine:mine.join(', ')||'(empty)',right:ws.join(', ')});}));per.W=[hOk,hTot];}
   keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G'||k[0]==='H')?clean(mine)===clean(right):mine===right;
     per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
     const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='H'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
     $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
-  const total=keys.length;const pct=Math.round(100*ok/total);
+  ok+=hOk;const total=keys.length+hTot;const pct=Math.round(100*ok/total);
   $('exRes').innerHTML=`<p class="big">${ok}/${total}</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
     (mistakes.length?`<div class="btns"><button id="explainAI">🤖 Explain my mistakes (mini-lesson)</button><button class="alt" id="retryEx">Try again</button></div>`:'<p>Perfect! 🎉</p>')+'<p class="status" id="exStatus">Sending your result to your teacher…</p>';
   if(mistakes.length){$('explainAI').onclick=()=>openAI(`You are my English teacher. I am a ${current.level} student at FreeWay (Mexico). I did the exercises for the reading "${current.title}". These are my mistakes:\n${mistakes.map(m=>`${m.k}: I wrote "${m.mine}", correct: "${m.right}"`).join('\n')}\nFor each mistake, explain briefly in simple English why the correct answer is right. Then group my mistakes by pattern and give me a MINI-LESSON for each pattern: the rule in simple words, 2 examples and 2 practice items. Wait for my answers and check them. Be kind and direct.\n\nTHE READING:\n${current.text}`);
