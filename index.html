@@ -179,7 +179,8 @@ function exHTML(){
   if(!E){$('exBox').innerHTML='<div class="card">No exercises for this reading yet.</div>';return}
   let h='';const btns=(k,opts,labels)=>`<div class="opts">${opts.map((o,i)=>`<button class="opt" data-k="${k}" data-v="${o}">${esc(labels?labels[i]:o)}</button>`).join('')}</div><div class="fb" id="fb-${k}"></div>`;
   h+='<section class="card"><h2>A. True, False or Not Given</h2>'+E.tf.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('A'+(i+1),['T','F','NG'],['True','False','Not given'])}</div>`).join('')+'</section>';
-  h+='<section class="card"><h2>B. Understanding the story</h2>'+E.mc.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('B'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
+  h+='<section class="card"><h2>B. Understanding the story</h2>'+E.mc.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('B'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+
+    (E.seq?`<h3 style="margin:18px 0 6px">Part 2 · Story in pictures</h3><p>Tap the pictures in the order they appear in the text (1 to 6). Tap <b>Reset</b> to start again.</p><div class="seqg" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">${'ABCDEF'.split('').map(L=>`<div class="seqc" data-l="${L}" style="position:relative;cursor:pointer;border:3px solid transparent;border-radius:10px;overflow:hidden"><img src="img/${current.id}/${L}.jpg" alt="Picture ${L}" style="width:100%;display:block"><b style="position:absolute;left:6px;top:4px;background:#fff;border-radius:6px;padding:0 6px">${L}</b><span class="seqn" style="position:absolute;right:6px;top:4px;background:#003F83;color:#fff;border-radius:50%;min-width:28px;height:28px;display:none;align-items:center;justify-content:center;font-weight:700"></span><div class="fb" id="fb-BP${L}" style="padding:2px 6px"></div></div>`).join('')}</div><div class="btns"><button class="alt" id="seqReset" type="button">Reset</button></div><p class="status">Then write three sentences about three pictures in your notebook (${E.seq.tense}).</p>`:'')+'</section>';
   h+='<section class="card"><h2>C. Words in context</h2>'+E.toefl.map((x,i)=>`<div class="q"><p>${i+1}. ${esc(x.q)}</p>${btns('C'+(i+1),['a','b','c','d'],x.o.map((o,k)=>'abcd'[k]+') '+o))}</div>`).join('')+'</section>';
   let n=0;const sum=esc(E.summary.text).replace(/\((\d)\)\s*_+/g,(m,d)=>`(${d}) <input class="gap" data-k="D${d}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><span class="fb" id="fb-D${d}"></span>`);
   h+=`<section class="card"><h2>D. Complete the summary</h2><p>All the missing words are in the Key vocabulary.</p><p style="line-height:2.4;font-style:italic">${sum}</p></section>`;
@@ -190,6 +191,9 @@ function exHTML(){
   $('exBox').innerHTML=h;
   $('exBox').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(b.disabled)return;ans[b.dataset.k]=b.dataset.v;$('exBox').querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle('sel',x===b))});
   $('checkEx').onclick=checkEx;
+  if(E.seq){const cells=[...$('exBox').querySelectorAll('.seqc')];const paint=()=>cells.forEach(c=>{const n=ans['BP'+c.dataset.l];const sp=c.querySelector('.seqn');sp.textContent=n||'';sp.style.display=n?'flex':'none';c.style.borderColor=n?'#003F83':'transparent'});
+    cells.forEach(c=>c.onclick=()=>{if(c.dataset.lock)return;const k='BP'+c.dataset.l;if(ans[k])return;const used=cells.filter(x=>ans['BP'+x.dataset.l]).length;ans[k]=String(used+1);paint()});
+    $('seqReset').onclick=()=>{if(cells[0].dataset.lock)return;cells.forEach(c=>delete ans['BP'+c.dataset.l]);paint()};paint();}
 }
 const expand=t=>t.replace(/\bcan't\b/g,'can not').replace(/\bwon't\b/g,'will not').replace(/\bcannot\b/g,'can not').replace(/n't\b/g,' not').replace(/'re\b/g,' are').replace(/'m\b/g,' am').replace(/'ve\b/g,' have').replace(/'ll\b/g,' will');
 const X=t=>clean(expand(clean(t)));
@@ -206,7 +210,7 @@ const clean=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u0
 async function checkEx(){
   const w=who();if(!w)return;
   $('exBox').querySelectorAll('input.gap:not(.hunt)').forEach(i=>ans[i.dataset.k]=i.value);
-  const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
+  const keys=[];E.tf.forEach((x,i)=>keys.push(['A'+(i+1),x.a,'paragraph '+x.p]));E.mc.forEach((x,i)=>keys.push(['B'+(i+1),x.a]));if(E.seq)'ABCDEF'.split('').forEach((L,i)=>keys.push(['BP'+L,String(E.seq.key[i])]));E.toefl.forEach((x,i)=>keys.push(['C'+(i+1),x.a]));
   E.summary.keys.forEach((k,i)=>keys.push(['D'+(i+1),k]));E.grammar.forEach((x,i)=>keys.push(['G'+(i+1),x.a,'paragraph '+x.p]));
   (E.fix||[]).forEach((x,i)=>keys.push(['H'+(i+1),x.a,x.t]));
   const missing=keys.filter(([k])=>!String(ans[k]||'').trim()).length;
@@ -222,6 +226,7 @@ async function checkEx(){
     per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
     const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='H'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
     $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
+  if(E.seq)$('exBox').querySelectorAll('.seqc').forEach(c=>c.dataset.lock=1);
   ok+=hOk;const total=keys.length+hTot;const secs=Object.entries(per).filter(([,[,b]])=>b);const pct=Math.round(secs.reduce((a,[,[x,y]])=>a+100*x/y,0)/secs.length);
   $('exRes').innerHTML=`<p class="big">${pct}%</p><p>${ok}/${total} points</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
     (mistakes.length?`<div class="btns"><button id="explainAI">🤖 Explain my mistakes (mini-lesson)</button><button class="alt" id="retryEx">Try again</button></div>`:'<p>Perfect! 🎉</p>')+'<p class="status" id="exStatus">Sending your result to your teacher…</p>';
