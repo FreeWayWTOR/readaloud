@@ -37,7 +37,8 @@ textarea{width:100%;min-height:260px;font:17px/1.6 Inter,Arial;padding:12px;bord
 <header><h1>FreeWay Read Aloud</h1><p id="sub">Read the text aloud. Your teacher gets your result automatically.</p></header>
 <main>
 <nav class="tabs"><button class="tab on" data-t="read">🎙 Read aloud</button><button class="tab" data-t="ex">✅ Exercises</button><button class="tab" data-t="wr">✍ Writing</button></nav>
-<section class="card" id="who"><div class="row">
+<section class="card" id="who"><div class="row hide" id="codeRow"><div><label for="gcode">Group code (ask your teacher)</label><input id="gcode" autocomplete="off" autocapitalize="characters" placeholder="CUA-B1"></div>
+<div id="selWrap" class="hide"><label for="studentSel">Your name</label><select id="studentSel" style="width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid #c9d3e3"></select></div></div><p class="status hide" id="whoMsg"></p><div class="row" id="freeRow">
 <div><label for="student">Your name</label><input id="student" autocomplete="name" placeholder="Ana López"></div>
 <div><label for="group">Your group</label><input id="group" placeholder="Amayuca B1 · Mon-Wed 4 pm"></div></div></section>
 
@@ -74,13 +75,28 @@ const names=new Set((current.names||[]).map(norm));
 const tokens=t=>t.split(/(\s+)/);
 $('title').textContent=current.title; $('sub').textContent=`${current.id} · ${current.level} · Read the text aloud. Your teacher gets your result automatically.`;
 $('student').value=ls.get('fw_student','');$('group').value=ls.get('fw_group','');
+// Students: if the teacher has a list in the sheet, the student types the group code once and picks the name.
+async function loadGroup(code){
+  try{const r=await fetch(API+'?action=group&code='+encodeURIComponent(code||'')).then(r=>r.json());
+    if(r.open){$('codeRow').classList.add('hide');$('freeRow').classList.remove('hide');return}
+    $('freeRow').classList.add('hide');$('codeRow').classList.remove('hide');
+    if(!r.names){$('selWrap').classList.add('hide');if(code){$('whoMsg').textContent='We do not know this code. Check it with your teacher.';$('whoMsg').classList.remove('hide')}return}
+    $('whoMsg').classList.add('hide');ls.set('fw_code',code);$('group').value=r.group;ls.set('fw_group',r.group);
+    $('studentSel').innerHTML='<option value="">Choose your name…</option>'+r.names.map(n=>`<option${n===ls.get('fw_student','')?' selected':''}>${n.replace(/</g,'&lt;')}</option>`).join('');
+    $('student').value=$('studentSel').value;$('selWrap').classList.remove('hide');
+  }catch(e){$('freeRow').classList.remove('hide')}}
+$('gcode').value=ls.get('fw_code','');$('gcode').onchange=()=>loadGroup($('gcode').value.trim().toUpperCase());
+$('studentSel').onchange=()=>{$('student').value=$('studentSel').value;ls.set('fw_student',$('studentSel').value)};
+loadGroup(ls.get('fw_code',''));
+// attempt counter per student, reading and kind (the first attempt is the one that counts)
+const attempt=kind=>{const k=`fw_att_${kind}_${current.id}_${($('student').value||'').toLowerCase()}`;const n=(ls.get(k,0)||0)+1;ls.set(k,n);return n};
 $('student').onchange=()=>ls.set('fw_student',$('student').value.trim());$('group').onchange=()=>ls.set('fw_group',$('group').value.trim());
 function showText(){ $('text').innerHTML=tokens(current.text).map(t=>/\s/.test(t)?t:`<span class="w">${t}</span>`).join(''); }
 showText();
 const status=m=>$('status').textContent=m;
 let rec,chunks=[],t0,tick;
 $('recBtn').onclick=async()=>{
-  if(!$('student').value.trim()||!$('group').value.trim()){status('Write your name and your group first.');$('student').focus();return}
+  if(!$('student').value.trim()||!$('group').value.trim()){status($('freeRow').classList.contains('hide')?'Write your group code and choose your name first.':'Write your name and your group first.');scrollTo({top:0});return}
   ls.set('fw_student',$('student').value.trim());ls.set('fw_group',$('group').value.trim());
   try{const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});chunks=[];rec=new MediaRecorder(s);
     rec.ondataavailable=e=>chunks.push(e.data);
@@ -137,14 +153,14 @@ function show(segs,duration){
   const comp=Math.max(0,Math.min(100,100*readCount/refCount));
   const wcpm=Math.round(spoken.filter(w=>w.err==='None'&&w.acc>=60).length/(duration/60));
   const f=wavg(flu),p=wavg(pro);
-  const total=Math.round(acc*0.4+f*0.2+p*0.2+comp*0.2);
+  const base=acc*0.4+f*0.2+p*0.2+comp*0.2;const total=Math.round(comp<90?base*comp/100:base);
   $('scores').innerHTML=[['Total',total],['Pronunciation',acc],['Fluency',f],['Intonation',p],['Completeness',comp]].map(([n,v])=>`<div class="sc"><b>${Math.round(v)}</b><span>${n} /100</span></div>`).join('')+`<div class="sc"><b>${wcpm}</b><span>words per minute</span></div>`;
   const prob={};graded.filter(w=>w.err==='Mispronunciation'||(w.err==='None'&&w.acc<60)).forEach(w=>{const x=norm(w.w);if(x)prob[x]=(prob[x]||0)+1});
   const list=Object.keys(prob);
   $('problems').innerHTML=list.length?list.map(w=>`<span class="w bad" style="display:inline-block;margin:3px">${w}</span>`).join(''):'<p>Excellent — no words to practise!</p>';
   $('results').classList.remove('hide');$('results').scrollIntoView({behavior:'smooth'});
   status('Sending your result to your teacher…');
-  const payload={student:ls.get('fw_student',''),group:ls.get('fw_group',''),reading:current.id,title:current.title,total,accuracy:Math.round(acc),fluency:Math.round(f),prosody:Math.round(p),completeness:Math.round(comp),wpm:wcpm,seconds:Math.round(duration),problems:list.join(' ')};
+  const payload={student:ls.get('fw_student',''),group:ls.get('fw_group',''),code:ls.get('fw_code',''),attempt:attempt('read'),reading:current.id,title:current.title,total,accuracy:Math.round(acc),fluency:Math.round(f),prosody:Math.round(p),completeness:Math.round(comp),wpm:wcpm,seconds:Math.round(duration),problems:list.join(' ')};
   fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
     .then(r=>r.json()).then(j=>status(j.ok?'Done! Your teacher has your result.':'Your result could not be sent. Tell your teacher.'))
     .catch(()=>status('Your result could not be sent. Check your internet and press "Read again".'));
@@ -152,7 +168,7 @@ function show(segs,duration){
 // ===== Tabs =====
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   ['read','ex','wr'].forEach(t=>$('p-'+t).classList.toggle('hide',t!==b.dataset.t));scrollTo({top:0})});
-const who=()=>{const s=$('student').value.trim(),g=$('group').value.trim();if(!s||!g){alert('Write your name and your group first.');$('student').focus();return null}ls.set('fw_student',s);ls.set('fw_group',g);return {s,g}};
+const who=()=>{const s=$('student').value.trim(),g=$('group').value.trim();if(!s||!g){alert($('freeRow').classList.contains('hide')?'Write your group code and choose your name first.':'Write your name and your group first.');scrollTo({top:0});return null}ls.set('fw_student',s);ls.set('fw_group',g);return {s,g}};
 const post=p=>fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>({ok:false}));
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
 const openAI=txt=>{const u='https://chatgpt.com/?q='+encodeURIComponent(txt);window.open(u,'_blank')};
@@ -175,6 +191,17 @@ function exHTML(){
   $('exBox').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(b.disabled)return;ans[b.dataset.k]=b.dataset.v;$('exBox').querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle('sel',x===b))});
   $('checkEx').onclick=checkEx;
 }
+const expand=t=>t.replace(/\bcan't\b/g,'can not').replace(/\bwon't\b/g,'will not').replace(/\bcannot\b/g,'can not').replace(/n't\b/g,' not').replace(/'re\b/g,' are').replace(/'m\b/g,' am').replace(/'ve\b/g,' have').replace(/'ll\b/g,' will');
+const X=t=>clean(expand(clean(t)));
+const same=(a,b)=>String(b).split('/').some(x=>X(a)===X(x));
+// Fix the sentence: the rest of the sentence must stay, the underlined part must contain the correction
+function fixOk(mine,wrong,right){ if(same(mine,right))return true;
+  const W=X(wrong).split(' '),R=X(right).split(' '),S=X(mine).split(' ').filter(Boolean);
+  let i=0;while(i<W.length&&i<R.length&&W[i]===R[i])i++;let j=0;while(j<W.length-i&&j<R.length-i&&W[W.length-1-j]===R[R.length-1-j])j++;
+  const pre=W.slice(0,i),suf=W.slice(W.length-j),rm=R.slice(i,R.length-j),wm=W.slice(i,W.length-j);
+  if(S.length<pre.length+suf.length||pre.some((w,k)=>S[k]!==w)||suf.some((w,k)=>S[S.length-suf.length+k]!==w))return false;
+  const sm=S.slice(pre.length,S.length-suf.length);if(sm.join(' ')===wm.join(' ')||sm.length>rm.length+2)return false;
+  let k=0;for(const w of sm)if(k<rm.length&&w===rm[k])k++;return k===rm.length&&rm.length>0}
 const clean=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,"'").replace(/[^a-z0-9' -]/g,' ').replace(/\s+/g,' ').trim();
 async function checkEx(){
   const w=who();if(!w)return;
@@ -188,19 +215,19 @@ async function checkEx(){
   if(missing&&!confirm(`You have ${missing} empty answers. Check anyway?`))return;
   let ok=0;const mistakes=[];const per={A:[0,0],B:[0,0],C:[0,0],D:[0,0],G:[0,0]};if(E.fix)per.H=[0,0];
   let hOk=0,hTot=0;if(E.hunt){per.W=[0,0];E.hunt.targets.forEach((t,k)=>Object.entries(t.items).forEach(([p,ws])=>{if(!ws.length)return;const inp=$('exBox').querySelector(`input.hunt[data-h="${k}-${p}"]`);const mine=String(inp?inp.value:'').split(/[,;\n]+|\s+/).map(clean).filter(Boolean);const pool=[...mine];const miss=[];
-    ws.forEach(w=>{const i=pool.indexOf(clean(w));if(i>=0){pool.splice(i,1);hOk++}else miss.push(w)});hTot+=ws.length;const got=ws.length-miss.length;
-    const fb=$(`fb-W${k}-${p}`);if(fb){fb.className='fb '+(miss.length?'no':'ok');fb.textContent=miss.length?` ${got}/${ws.length} · Missing: ${miss.join(', ')}${pool.length?' · Not correct: '+pool.join(', '):''}`:` ✓ ${got}/${ws.length}`}
-    if(miss.length)mistakes.push({k:`W${'AB'[k]}¶${p}`,mine:mine.join(', ')||'(empty)',right:ws.join(', ')});}));per.W=[hOk,hTot];}
-  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=(k[0]==='D'||k[0]==='G'||k[0]==='H')?clean(mine)===clean(right):mine===right;
+    let cellOk=0;ws.forEach(w=>{const i=pool.indexOf(clean(w));if(i>=0){pool.splice(i,1);cellOk++}else miss.push(w)});const got=Math.max(0,cellOk-pool.length);hOk+=got;hTot+=ws.length;
+    const fb=$(`fb-W${k}-${p}`);if(fb){fb.className='fb '+(got<ws.length?'no':'ok');fb.textContent=got<ws.length?` ${got}/${ws.length}${miss.length?' · Missing: '+miss.join(', '):''}${pool.length?' · Not correct (−1 each): '+pool.join(', '):''}`:` ✓ ${got}/${ws.length}`}
+    if(got<ws.length)mistakes.push({k:`W${'AB'[k]}¶${p}`,mine:mine.join(', ')||'(empty)',right:ws.join(', ')});}));per.W=[hOk,hTot];}
+  keys.forEach(([k,right,where])=>{const mine=ans[k]||'';const good=k[0]==='H'?fixOk(mine,E.fix[+k.slice(1)-1].w,right):(k[0]==='D'||k[0]==='G')?same(mine,right):mine===right;
     per[k[0]][1]++;if(good){ok++;per[k[0]][0]++}else mistakes.push({k,mine:mine||'(empty)',right});
     const fb=$('fb-'+k);if(fb){fb.className='fb '+(good?'ok':'no');fb.textContent=good?(k[0]==='H'?` ✓ (${where})`:' ✓'):` ✗ Correct answer: ${right}${where?' ('+where+')':''}`}
     $('exBox').querySelectorAll(`.opt[data-k="${k}"]`).forEach(b=>{b.disabled=true;if(b.dataset.v===right)b.classList.add('right');else if(b.dataset.v===mine)b.classList.add('wrong')})});
-  ok+=hOk;const total=keys.length+hTot;const pct=Math.round(100*ok/total);
-  $('exRes').innerHTML=`<p class="big">${ok}/${total}</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
+  ok+=hOk;const total=keys.length+hTot;const secs=Object.entries(per).filter(([,[,b]])=>b);const pct=Math.round(secs.reduce((a,[,[x,y]])=>a+100*x/y,0)/secs.length);
+  $('exRes').innerHTML=`<p class="big">${pct}%</p><p>${ok}/${total} points</p><p>${Object.entries(per).map(([s,[a,b]])=>`${s}: ${a}/${b}`).join(' · ')}</p>`+
     (mistakes.length?`<div class="btns"><button id="explainAI">🤖 Explain my mistakes (mini-lesson)</button><button class="alt" id="retryEx">Try again</button></div>`:'<p>Perfect! 🎉</p>')+'<p class="status" id="exStatus">Sending your result to your teacher…</p>';
   if(mistakes.length){$('explainAI').onclick=()=>openAI(`You are my English teacher. I am a ${current.level} student at FreeWay (Mexico). I did the exercises for the reading "${current.title}". These are my mistakes:\n${mistakes.map(m=>`${m.k}: I wrote "${m.mine}", correct: "${m.right}"`).join('\n')}\nFor each mistake, explain briefly in simple English why the correct answer is right. Then group my mistakes by pattern and give me a MINI-LESSON for each pattern: the rule in simple words, 2 examples and 2 practice items. Wait for my answers and check them. Be kind and direct.\n\nTHE READING:\n${current.text}`);
     $('retryEx').onclick=()=>{for(const k in ans)delete ans[k];exHTML();scrollTo({top:0})}}
-  const r=await post({kind:'exercises',student:w.s,group:w.g,reading:current.id,title:current.title,score:ok,total,pct,detail:Object.entries(per).map(([s,[a,b]])=>`${s} ${a}/${b}`).join(' · '),mistakes:mistakes.map(m=>m.k).join(' ')});
+  const r=await post({kind:'exercises',student:w.s,group:w.g,reading:current.id,title:current.title,code:ls.get('fw_code',''),attempt:attempt('ex'),score:ok,total,pct,sections:Object.fromEntries(secs.map(([s,[a,b]])=>[s,Math.round(100*a/b)])),detail:Object.entries(per).map(([s,[a,b]])=>`${s} ${a}/${b}`).join(' · '),mistakes:mistakes.map(m=>m.k).join(' '),answers:mistakes.map(m=>`${m.k}: "${m.mine}" → ${m.right}`).join(' | ')});
   $('exStatus').textContent=r.ok?'Done! Your teacher has your result.':'Your result could not be sent. Check your internet.';
 }
 exHTML();
@@ -213,7 +240,7 @@ if(W){$('wrBox').innerHTML=`<section class="card"><h2>F. Writing: ${esc(W.title)
   const t=$('wtext');t.value=ls.get('fw_w_'+current.id,'');const cnt=()=>{$('wcount').textContent=(t.value.trim().match(/\S+/g)||[]).length;ls.set('fw_w_'+current.id,t.value)};t.oninput=cnt;cnt();
   $('wAI').onclick=async()=>{const w=who();if(!w)return;const words=(t.value.trim().match(/\S+/g)||[]).length;if(words<20){alert('Write your text first.');return}
     openAI(`You are my English teacher. I am a ${current.level} student at FreeWay (Mexico). This is my writing for the reading "${current.title}".\nTASK: ${W.task}\nMY TEXT:\n${t.value}\n\n1) Give me a score out of 10 (content, organization, grammar, vocabulary). 2) Correct my errors and explain each one briefly in simple English. 3) Give me one MINI-LESSON on my most important error pattern, with 2 practice items, and check my answers. 4) Show me an improved version of my text. 5) At the end, write a short TEACHER REPORT: Student ${w.s} · Group ${w.g} · ${current.id} · Writing score · Main error patterns · One recommendation.`);
-    const r=await post({kind:'writing',student:w.s,group:w.g,reading:current.id,title:current.title,words,text:t.value});
+    const r=await post({kind:'writing',student:w.s,group:w.g,code:ls.get('fw_code',''),attempt:attempt('wr'),reading:current.id,title:current.title,words,text:t.value});
     $('wStatus').textContent=r.ok?'Your text was also sent to your teacher.':'ChatGPT opened, but your text could not be sent to your teacher.'};
 }else $('wrBox').innerHTML='<div class="card">No writing task for this reading yet.</div>';
 }
